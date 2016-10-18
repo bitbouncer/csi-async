@@ -30,7 +30,7 @@ template <typename result_type>
 class work
 {
   public:
-  using  callback = std::function <void(result_type)>;
+  using callback = std::function <void(result_type)>;
   using async_function = std::function <void(callback)>;
   using async_vcallback1 = std::function <void(int64_t duration_ms, result_type ec)>;
 
