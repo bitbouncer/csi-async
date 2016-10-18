@@ -18,8 +18,8 @@ void async_sleep(boost::asio::io_service& ios, int64_t ms, std::function<void(in
 int main() {
   using namespace std::chrono_literals;
   boost::asio::io_service io_service;
-  std::unique_ptr<boost::asio::io_service::work> nullwork = std::make_unique<boost::asio::io_service::work>(io_service);
-  std::thread background_thread([&] { io_service.run(); });
+  std::unique_ptr<boost::asio::io_service::work> keepalive_work = std::make_unique<boost::asio::io_service::work>(io_service);
+  std::thread asio_thread([&] { io_service.run(); });
   auto work = std::make_shared<csi::async::work<int>>(csi::async::PARALLEL, csi::async::FIRST_FAIL);
   for (auto delay : {5,4,3,2,1}) {
     work->push_back([&io_service, delay](csi::async::work<int>::callback cb) {
@@ -32,8 +32,8 @@ int main() {
   });
 
   std::cout << "resetting dummy work" << std::endl;
-  nullwork.reset();
-  background_thread.join();
+  keepalive_work.reset();
+  asio_thread.join();
   std::cout << "exiting" << std::endl;
   return 0;
 }
