@@ -3,6 +3,7 @@
 #include <functional>
 #include <cstdint>
 #include <future>
+//#include <type_traits>
 
 #pragma once
 
@@ -12,19 +13,7 @@ namespace async {
 enum end_condition_t { FIRST_FAIL, FIRST_SUCCESS, ALL }; // could this be a user defined function instead??
 enum scheduling_t    { PARALLEL, SEQUENTIAL }; // node async calls this parallell & waterfall
 
-template <typename Value>
-class destructor_callback
-{
-  public:
-  destructor_callback(std::function <void(Value& val)>  callback) : _cb(callback) {}
-  destructor_callback(const Value& initial_value, std::function <void(Value& val)>  callback) : _val(initial_value), _cb(callback) {}
-  ~destructor_callback() { _cb(_val); }
-  Value& value() { return _val; }
-  const Value& value() const { return _val; }
-  private:
-  std::function <void(Value& ec)> _cb;
-  Value _val;
-};
+
 
 template <typename result_type>
 class work
@@ -34,6 +23,8 @@ class work
   using async_function = std::function <void(callback)>;
   using async_vcallback1 = std::function <void(int64_t duration_ms, result_type ec)>;
 
+  static_assert(!std::is_reference<result_type>::value, "Error: lvalue was passed!");
+
   private:
   class result
   {
@@ -42,7 +33,7 @@ class work
       _cb(callback),
       _result_reported(false),
       _end_condition(end),
-      _result(nr_of_tasks, 0),
+      _result(nr_of_tasks, result_type()),
       _done(nr_of_tasks, false),
       _nr_done(0),
       _start_ts(std::chrono::steady_clock::now()) {}
@@ -60,11 +51,13 @@ class work
           if (!_result_reported) {
             if (ec) {
               std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start_ts);
+              // logging?
               _cb(duration.count(), ec);
               _result_reported = true;
             } else {
               if (_nr_done == _result.size()) {
                 std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start_ts);
+                // logging?
                 _cb(duration.count(), ec);
                 _result_reported = true;
               }
@@ -75,11 +68,13 @@ class work
           if (!_result_reported) {
             if (!ec) {
               std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start_ts);
+              // logging?
               _cb(duration.count(), ec);
               _result_reported = true;
             } else {
               if (_nr_done == _result.size()) {
                 std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start_ts);
+                // logging?
                 _cb(duration.count(), ec);
                 _result_reported = true;
               }
@@ -87,11 +82,12 @@ class work
         case ALL:
           if (_nr_done == _result.size()) {
             std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start_ts);
-            int res = 0;
-            for (const auto &i : _result) {
+            result_type res = result_type();
+            for (auto const& i : _result) {
             if (!i)
               res = i;
             }
+            // logging?
             _cb(duration.count(), res);
             _result_reported = true;
           }
@@ -133,10 +129,10 @@ class work
    
   void push_back(async_function f) { _work.push_back(f); }
 
-  int operator()() {
-    std::promise<int> p;
-    std::future<int>  f = p.get_future();
-    async_call([&p](int64_t duration_ms, int ec) {
+  result_type operator()() {
+    std::promise<result_type> p;
+    std::future<result_type>  f = p.get_future();
+    async_call([&p](int64_t duration_ms, result_type ec) {
       p.set_value(ec);
     });
     f.wait();
@@ -144,7 +140,8 @@ class work
   }
   
   void operator()(callback cb) {
-    async_call([cb](int64_t duration_ms, int ec) {
+    async_call([cb](int64_t duration_ms, result_type ec) {
+      // add logging?
       cb(ec);
     });
   }
@@ -153,7 +150,7 @@ class work
   static void async_parallel(RAIter begin, RAIter end, std::shared_ptr<result> result) {
     size_t index = 0;
     for (RAIter i = begin; i != end; ++i, ++index) {
-      (*i)([i, result, index](int ec) {
+      (*i)([i, result, index](result_type ec) {
         (*result).set_result(index, ec);
       });
     }
@@ -164,7 +161,7 @@ class work
     if (begin == end) {
       return;
     }
-    (*begin)([result, begin, end](int ec) {
+    (*begin)([result, begin, end](result_type ec) {
       size_t index = result->size() - (end - begin);
       if (result->set_result(index, ec))
         async_sequential(begin + 1, end, result);
@@ -172,7 +169,7 @@ class work
   }
 
   void async_call(async_vcallback1 cb) {
-    _result = std::make_shared<result>(_work.size(), _end_condition, [cb](int64_t duration_ms, int ec) {
+    _result = std::make_shared<result>(_work.size(), _end_condition, [cb](int64_t duration_ms, result_type ec) {
       cb(duration_ms, ec);
     });
     if (_scheduling == PARALLEL)
@@ -182,19 +179,14 @@ class work
     };
 
   void async_call(callback cb) {
-    async_call([cb](int64_t duration_ms, int ec) {
+    async_call([cb](int64_t duration_ms, result_type ec) {
+      // add logging?
       cb(ec);
     });
   };
 
-  int call() {
-    std::promise<int> p;
-    std::future<int>  f = p.get_future();
-    async_call([&p](int64_t duration_ms, int ec) {
-      p.set_value(ec);
-    });
-    f.wait();
-    return f.get();
+  inline result_type call() {
+    return operator();
   }
   
   private:
