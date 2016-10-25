@@ -3,7 +3,7 @@
 #include <functional>
 #include <cstdint>
 #include <future>
-//#include <type_traits>
+#include <cassert>
 
 #pragma once
 
@@ -11,7 +11,7 @@ namespace csi {
   namespace async {
 
     enum end_condition_t { FIRST_FAIL, FIRST_SUCCESS, ALL }; // could this be a user defined function instead??
-    enum scheduling_t { PARALLEL, SEQUENTIAL }; // node async calls this parallell & waterfall
+    enum scheduling_t { PARALLEL, SEQUENTIAL }; // node async calls this parallel & waterfall
 
     template <typename result_type>
     class work
@@ -136,7 +136,17 @@ namespace csi {
         _end_condition(ec),
         _work(f) {}
 
-      void push_back(async_function f) { _work.push_back(f); }
+      void push_back(async_function f) {
+        _work.push_back(f); 
+      }
+
+      async_function get_function(size_t index) { 
+        return _work[index]; 
+      }
+
+      result_type get_result(size_t index) {
+        return (*_result)[index];
+      }
 
       result_type operator()() {
         std::promise<result_type> p;
