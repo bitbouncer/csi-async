@@ -91,14 +91,14 @@ namespace csi {
             if (_nr_done == _result.size())
             {
               std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start_ts);
-              result_type res = result_type();
-              for (auto const& i : _result)
+              result_type res_ec = result_type();
+              for (auto const& item_ec : _result)
               {
-                if (!i)
-                  res = i;
+                if (item_ec) // set res_ec to last ec that is non zero
+                  res_ec = item_ec;
               }
               // logging?
-              _cb(duration.count(), res);
+              _cb(duration.count(), res_ec);
               _result_reported = true;
             }
             break;
